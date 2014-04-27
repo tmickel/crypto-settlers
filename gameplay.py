@@ -57,4 +57,5 @@ class Gameplay():
             elif self.phase == 1:
                 # Board negotiation phase.  We shuffle the board pieces...
                 print "Negotiating board..."
+                return
                 
