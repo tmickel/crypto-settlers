@@ -2,12 +2,14 @@ import socket
 import json
 
 class SettlersNetworkClient():
-    def __init__(self, ip, port, signature_verify):
+    def __init__(self, ip, port, signature_verify, uid):
         self.ip = ip
         self.port = port
         self.socket = None
         self.socket_file = None
         self.signature_verify = signature_verify
+        self.my_uid = uid
+        self.their_uid = None
 
     def connect(self):
         try:
@@ -24,6 +26,7 @@ class SettlersNetworkClient():
         self.send_data({'public_key': self.signature_verify.get_public_key()})
 
     def send_data(self, data):
+        data['uid'] = self.my_uid # Tack on our UID for identification before we send/sign
         packed_data = json.dumps(data)
         signature = self.signature_verify.sign(packed_data)
 
@@ -32,12 +35,10 @@ class SettlersNetworkClient():
 
         self.socket.send(send_message + '\n')
 
-        recv_data = self.socket_file.readline()
-        recv_data_decoded = json.loads(recv_data)
-        if (type(recv_data_decoded) != dict or 'success' not in recv_data_decoded or
-            recv_data_decoded['success'] != True):
-            print "Server returned an error"
-            return False
+        if self.their_uid is None:
+            recv_data = self.socket_file.readline()
+            recv_data_decoded = json.loads(recv_data)
+            self.their_uid = recv_data_decoded['uid']
         return True
 
     def disconnect(self):

@@ -16,4 +16,3 @@ def board(boardList):
         shuffledEncryptedList.append(encryption)
         
     return shuffledEncryptedList
-    
