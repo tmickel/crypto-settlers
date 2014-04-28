@@ -1,30 +1,30 @@
 import random
+from Crypto.Hash import SHA256
 
 class Dice(object):
     def __init__(self):
-        self.randomBits=32
+        self.randomBits=64
         self.randomNumber = random.getrandbits(self.randomBits)
         self.randomHash = SHA256.new()
-        self.randomHash.update(randomNumber)
+        self.randomHash.update(str(self.randomNumber))
         
-    def firstRound():
-        return self.randomHash
+    def generate_commitment(self):
+        return self.randomHash.hexdigest()
 
-    def secondRound():
+    def committed_roll(self):
         return self.randomNumber
 
-    def thirdRound(turnCount, playersRolls):
-        playersRolls.append(randomNumber)
-        playersRolls.sort()
-
+    def calculate_distributed_roll(self, turnCount, playersRolls):
+        # Add our roll to the list of shared rolls, append them
+        # all with the current turn number, sort them (for deterministic hash)
+        # and hash the resulting string.  
+        rolls = list(playerRolls)
+        rolls.append(self.randomNumber)
+        rolls.sort()
         turnConcatString = str(turnCount)
-        for i in xrange(playersRolls):
-            turnConcat = turnConcat + str(playersRolls[i])
-
-        turnConcatInt = int(turnConcatString)
-
-        turnConcatIntHash = SHA256.new()
-        turnConcatIntHash.update(turnConcatInt)
-
-        return turnConcatIntHash % 6
-        
+        for roll in rolls:
+            turnConcatString += str(roll)
+        turnConcatHash = SHA256.new()
+        turnConcatHash.update(turnConcatString)
+        # interpret the hash as an integer, mod 6
+        return int(int(turnConcatHash.hexdigest(), base=16) % 6)
