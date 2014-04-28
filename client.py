@@ -1,7 +1,7 @@
 import socket
 import json
 
-class SettlersNetworkClient():
+class SettlersNetworkClient(object):
     def __init__(self, ip, port, signature_verify, uid):
         self.ip = ip
         self.port = port

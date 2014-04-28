@@ -4,7 +4,7 @@ from Crypto.Hash import SHA256
 from Crypto import Random
 import base64
 
-class Sign():
+class Sign(object):
     def __init__(self):
         # Generate a random public/private key for this player
         # used for signing messages

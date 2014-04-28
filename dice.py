@@ -1,6 +1,6 @@
 import random
 
-class diceRoller():
+class Dice(object):
     def __init__(self):
         self.randomBits=32
         self.randomNumber = random.getrandbits(self.randomBits)

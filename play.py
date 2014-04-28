@@ -55,7 +55,6 @@ def game_init():
     print "All connected!"
     
     gp.setup_client_connections(player_clients)
-    print "setup connections"
     gp.run()
 
     print "Game is finished! Disconnecting clients..."
