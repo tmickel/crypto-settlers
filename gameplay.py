@@ -6,6 +6,7 @@
 import random
 import time
 import board
+import dice
 
 class Gameplay(object):
     def __init__(self, uid):
@@ -14,6 +15,8 @@ class Gameplay(object):
         self.uid = uid
         self.players_ready = {}
         self.players_state = {}
+        self.die_rolls = {}
+        self.die_turn_count = 0
 
     def setup_client_connections(self, client_connections):
         """Receive connected clients from the network initializer."""
@@ -51,12 +54,23 @@ class Gameplay(object):
         if 'board_keyiv' in message:
             # Save the player's board key/iv - AFTER all suggestions
             self.players_state[message['uid']][1] = message['board_keyiv']
+        if 'die_commit' in message:
+            d_t = int(message['die_turn'])
+            # Save the player's die commitment
+            if d_t not in self.die_rolls:
+                self.die_rolls[d_t] = {c.their_uid: [None, None] for c in self.client_connections} 
+            self.die_rolls[d_t][message['uid']][0] = message['die_commit']
+        if 'die_roll' in message:
+            # Save the player's die roll
+            d_t = int(message['die_turn'])
+            self.die_rolls[d_t][message['uid']][1] = message['die_roll']
     
     def run(self):
         """Run the game.  This function should not return until we are finished."""
         while True:
             if self.phase == 0: self.welcome_run()
             elif self.phase == 1: self.board_negotiation_run()
+            elif self.phase == 2: self.turn_order_run()
             else:
                 time.sleep(10)
                 return
@@ -120,3 +134,55 @@ class Gameplay(object):
         
         print "The decided board is:", self.decided_board
         self.phase += 1
+    
+    def run_die_roll(self):
+        if self.die_turn_count not in self.die_rolls:
+            self.die_rolls[self.die_turn_count] = {c.their_uid: [None, None] for c in self.client_connections} # [commitment, roll]
+        die = dice.Dice()
+        commit = die.generate_commitment()
+        self.die_rolls[self.die_turn_count][self.uid] = [commit, None]
+        self.broadcast_message({'die_commit': commit, 'die_turn': self.die_turn_count})
+        while not all([a[0] for a in self.die_rolls[self.die_turn_count].values()]):
+            time.sleep(2) # Wait to collect everyone's commitment
+        rollnum = die.committed_roll()
+        self.broadcast_message({'die_roll': rollnum, 'die_turn': self.die_turn_count})
+        self.die_rolls[self.die_turn_count][self.uid][1] = rollnum
+        while not all([a[1] for a in self.die_rolls[self.die_turn_count].values()]):
+            time.sleep(2) # Wait to collect everyone's roll
+        # Verify everyone's commitment matched their rolls.  If not, someone's lying.
+        for roll in self.die_rolls[self.die_turn_count].values():
+            assert die.verify_commitment(roll[0], roll[1])
+        # Calculate and return the die roll, agreed upon
+        final_roll = die.calculate_distributed_roll(self.die_turn_count, [r[1] for r in self.die_rolls[self.die_turn_count].values()])
+        assert final_roll >= 1 and final_roll <= 6
+        self.die_turn_count += 1
+        return final_roll
+
+    def turn_order_run(self):
+        """Detemine the turn order of the players by rolling the distributed dice.
+           We roll the dice once for each player in UID order..."""
+        print "Determining turn order!"
+        die_order = sorted([c.their_uid for c in self.client_connections] + [self.uid])
+        die_results = {}
+        while True:
+            die_results = {}
+            for current_uid in die_order:
+                roll = self.run_die_roll() + self.run_die_roll() # Collect 2 die results per UID
+                die_results[current_uid] = roll
+            # Determine the winner - largest die roller.
+            max_roll = -1
+            max_roller = None
+            for uid, roll in die_results.iteritems():
+                if roll > max_roll:
+                    max_roll = roll
+                    max_roller = uid
+            # OK, but does this roll appear more than once?
+            if die_results.values().count(max_roll) > 1:
+                print "Highest roller was a tie, trying rolls again"
+                continue
+            break
+        print "Turn order determined!"
+        self.phase += 1
+        print die_results
+        
+        
