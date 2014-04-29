@@ -7,6 +7,7 @@ import random
 import time
 import board
 import dice
+import ui
 
 # To do for code for Wednesday:
 # -finish up turn order
@@ -29,6 +30,9 @@ class Gameplay(object):
         self.die_turn_count = 0
         self.shuffle_turn_count = 0
         self.shuffle_rolls = {}
+        self.all_uids = []
+        self.player_number = -1
+        self.turn_order_first = None
 
     def setup_client_connections(self, client_connections):
         """Receive connected clients from the network initializer."""
@@ -97,6 +101,9 @@ class Gameplay(object):
             time.sleep(1)
             print "..."
         print "Ready to play!  Starting game in 3 seconds..."
+        self.all_uids = [c.their_uid for c in self.client_connections] + [self.uid]
+        self.player_number = ui.uid_to_friendly(self.uid, self.all_uids)
+        print "You are player", self.player_number
         time.sleep(3)
         self.phase += 1
         
@@ -105,7 +112,7 @@ class Gameplay(object):
             self.shuffle_rolls[self.shuffle_turn_count] = {c.their_uid: [False, []] for c in self.client_connections} #[shuffle, [key, iv]]
             self.shuffle_rolls[self.shuffle_turn_count][self.uid] = [False, []]
         # Consistent negotiation order across clients
-        negotiate_order = sorted([c.their_uid for c in self.client_connections] + [self.uid])
+        negotiate_order = sorted(list(self.all_uids))
         my_key = None
         my_iv = None
         i = 0 # Current client
@@ -155,7 +162,7 @@ class Gameplay(object):
         self.decided_board = self.run_public_shuffle(range(19), board.board_shuffle_and_encrypt, board.board_decrypt)
         print "The decided board is:", self.decided_board
         print "Negotiating board roll values..."
-        self.decided_board_roll_values = self.run_public_shuffle(range(19), board.board_shuffle_and_encrypt, board.board_decrypt)
+        self.decided_board_roll_values = self.run_public_shuffle(range(18), board.board_shuffle_and_encrypt, board.board_decrypt)
         print "Values are", self.decided_board_roll_values
         self.phase += 1
     
@@ -188,14 +195,14 @@ class Gameplay(object):
         print "Determining turn order!"
         die_order = sorted([c.their_uid for c in self.client_connections] + [self.uid])
         die_results = {}
+        max_roll = -1
+        max_roller = None
         while True:
             die_results = {}
             for current_uid in die_order:
                 roll = self.run_die_roll() + self.run_die_roll() # Collect 2 die results per UID
                 die_results[current_uid] = roll
             # Determine the winner - largest die roller.
-            max_roll = -1
-            max_roller = None
             for uid, roll in die_results.iteritems():
                 if roll > max_roll:
                     max_roll = roll
@@ -206,7 +213,6 @@ class Gameplay(object):
                 continue
             break
         print "Turn order determined!"
+        self.turn_order_first = max_roller
+        print "Player", ui.uid_to_friendly(max_roller, self.all_uids), "goes first."
         self.phase += 1
-        print die_results
-        
-        
