@@ -33,6 +33,8 @@ class Gameplay(object):
         self.player_number = -1
         self.turn_order_first = None
         self.ui_board = None
+        self.initialization_round = 0
+        self.init_rounds = {}
 
     def setup_client_connections(self, client_connections):
         """Receive connected clients from the network initializer."""
@@ -82,6 +84,8 @@ class Gameplay(object):
             # Save the player's die roll
             d_t = int(message['die_turn'])
             self.die_rolls[d_t][message['uid']][1] = message['die_roll']
+        if 'initialization_round' in message:
+            self.init_rounds[message['initialization_round']] = (message['uid'], message['house_place'], message['road_place'])       
     
     def run(self):
         """Run the game.  This function should not return until we are finished."""
@@ -223,27 +227,77 @@ class Gameplay(object):
         print "Player", ui.uid_to_friendly(max_roller, self.all_uids), "goes first."
         self.phase += 1
     
+    def house_place(self, initial_case=False):
+        while True:
+            hin = raw_input("Please tell me a vertex to place a house or ! for vertex reference: ")
+            if hin == "!":
+                self.ui_board.print_vertex_reference()
+                continue
+            if self.ui_board.can_build_house(hin, ui.uid_to_friendly(self.uid, self.all_uids), initial_case):
+                print "OK!  Attempting to build a house there..."
+                return hin
+            print "Can't seem to build a house there... are you sure it's open and not too close to others?"
+        
+    def road_place(self):
+        while True:
+            hin = raw_input("Please tell me an edge to place a road or ! for edge reference: ")
+            if hin == "!":
+                self.ui_board.print_board_edge_reference()
+                continue
+            if self.ui_board.can_build_road(hin, ui.uid_to_friendly(self.uid, self.all_uids)):
+                print "OK!  Attempting to build a road there..."
+                return hin
+            print "Can't seem to build a road there... are you sure it's open, attached to other roads/houses?"
+    
     def initial_placement_run(self):
         """Allow players to place original two houses and two roads"""
         # Order:  start with self.turn_order_first, proceed to everyone in UID
         # order.  Then start with the last person, going back to self.t_o_f...
-        placement_order = [self.turn_order_first] # add the first person
+        self.placement_order = [self.turn_order_first] # add the first person
         for u in sorted(self.all_uids): # add everyone after the first person
             if u > self.turn_order_first:
-                placement_order.append(u)
+                self.placement_order.append(u)
         for u in sorted(self.all_uids): # add everyone before the first person
             if u < self.turn_order_first:
-                placement_order.append(u)
+                self.placement_order.append(u)
         for u in sorted(self.all_uids)[::-1]: # add everyone before the first person, reverse order
             if u < self.turn_order_first:
-                placement_order.append(u)
+                self.placement_order.append(u)
         for u in sorted(self.all_uids)[::-1]: # add everyone after the first person, reverse order
             if u > self.turn_order_first:
-                placement_order.append(u)
-        placement_order.append(self.turn_order_first)
+                self.placement_order.append(u)
+        self.placement_order.append(self.turn_order_first)
         
+        print "Starting game initial placement..."
+        time.sleep(5)
         
-        print placement_order
-        
+        self.initialization_round = 0
+        for i in range(len(self.placement_order)):
+            self.initialization_round = i
+            players_turn = self.placement_order[self.initialization_round]
+            if players_turn == self.uid:
+                # Our turn!
+                h = self.house_place(True)
+                self.ui_board.set_vertex(h, ui.uid_to_friendly(self.uid, self.all_uids)) # set up the vertex for road checking
+                r = self.road_place()
+                self.broadcast_message({"initialization_round": self.initialization_round, "house_place": h, "road_place": r})
+                self.init_rounds[self.initialization_round] = (self.uid, h, r)
+            else:
+                print "Waiting for another player to go!"
+            while self.initialization_round not in self.init_rounds:
+                time.sleep(1)
+            # Verify the player's placements
+            rnd = self.init_rounds[self.initialization_round]
+            assert rnd[0] == players_turn # It was actually that player's turn
+            if rnd[0] != self.uid:
+                assert self.ui_board.can_build_house(rnd[1], ui.uid_to_friendly(rnd[0], self.all_uids), True)
+                self.ui_board.set_vertex(rnd[1], ui.uid_to_friendly(rnd[0], self.all_uids))
+                print "setting vertex ", rnd[1], "to player"
+            self.ui_board.print_actual_board()
+            assert self.ui_board.can_build_road(rnd[2], ui.uid_to_friendly(rnd[0], self.all_uids))
+            # Looks all good - we didn't crash the game for a cheater.  Update our board and proceed.
+            self.ui_board.set_edge(rnd[2], ui.uid_to_friendly(rnd[0], self.all_uids))
+            print "The new board:"
+            self.ui_board.print_actual_board()
         self.phase += 1
         

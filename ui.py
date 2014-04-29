@@ -167,15 +167,16 @@ class UIBoard(object):
     
     def print_actual_board(self):
         self.format_board(self.game_vertex, self.game_edges, self.pieces, self.tokens)
+        self.print_board()
         
     def vertex_friendly_to_id(self, f):
         """Convert a user/friendly-represented vertex to one we can use easily internally"""
-        friendly_vertices = list(string.ascii_lowercase) + list(string.ascii_uppercase) + range(2)
+        friendly_vertices = list(string.ascii_lowercase) + list(string.ascii_uppercase) + [str(n) for n in range(2)]
         return friendly_vertices.index(f)
     
     def edge_friendly_to_id(self, f):
         """Convert a user/friendly-represented edge to one we can use easily internally"""
-        friendly_edges = list(string.ascii_lowercase) + list(string.ascii_uppercase) + range(20)
+        friendly_edges = list(string.ascii_lowercase) + list(string.ascii_uppercase) + [str(n) for n in range(20)]
         return friendly_edges.index(f)
     
     # Useful public methods - for player IO
@@ -185,7 +186,7 @@ class UIBoard(object):
     
     def set_edge(self, f, player):
         """Place player number on edge (build a road)"""
-        self.game_edge[self.edge_friendly_to_id(f)] = player
+        self.game_edges[self.edge_friendly_to_id(f)] = player
     
     def get_vertex(self, f):
         """Return who is on vertex f"""
@@ -193,12 +194,12 @@ class UIBoard(object):
     
     def get_edge(self, f):
         """Returns who is on edge f"""
-        return self.game_edge[self.edge_friendly_to_id(f)]
+        return self.game_edges[self.edge_friendly_to_id(f)]
     
     def edge_adjacent_vertices(self, f):
         """Given vertex f, return list of adjacent vertices"""
         vertices = []
-        for vertex, edges in self.vertex_edge_adjacencies:
+        for vertex, edges in self.vertex_edge_adjacencies.iteritems():
             if f in edges:
                 vertices.append(vertex)
         return vertices
@@ -216,14 +217,16 @@ class UIBoard(object):
     def can_build_road(self, f, player):
         """Returns whether player can build road on edge f"""
         edge_index = self.edge_friendly_to_id(f)
-        if self.game_edge[edge_index] != '-':
+        if self.game_edges[edge_index] != '-':
+            print "already occupied"
             return False # already occupied
         adjacent_vertices = self.edge_adjacent_vertices(f)
         # adjacent vertices either have nothing or player
         has_adjacent_settlement = False
         for a_v in adjacent_vertices:
-            if a_v != '.':
-                if a_v != player:
+            a_v_v = self.get_vertex(a_v)
+            if a_v_v != '.':
+                if a_v_v != player:
                     return False
                 else:
                     has_adjacent_settlement = True
@@ -233,6 +236,7 @@ class UIBoard(object):
         for a_e in adjacent_edges:
             if self.get_edge(a_e) == player:
                 has_adjacent_road = True
+        print has_adjacent_road, has_adjacent_settlement
         return has_adjacent_road or has_adjacent_settlement
     
     def can_build_house(self, f, player, initial_case=False):
@@ -255,6 +259,7 @@ class UIBoard(object):
     
     def resources_owed(self, n):
         """What resources are owed on a particular dice roll?"""
+        pass
     
     
     
