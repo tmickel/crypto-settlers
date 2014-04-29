@@ -165,6 +165,7 @@ class Gameplay(object):
         self.decided_board_roll_values = self.run_public_shuffle(range(18), board.board_shuffle_and_encrypt, board.board_decrypt)
                 
         self.ui_board = ui.UIBoard(self.decided_board, self.decided_board_roll_values)
+        self.ui_board.print_hex_reference()
         self.ui_board.print_vertex_reference()
         self.ui_board.print_board_edge_reference()
         
