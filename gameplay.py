@@ -12,7 +12,6 @@ import ui
 # To do for code for Wednesday:
 # -finish up turn order
 # -players choose two houses and two roads to start
-# -ascii art board, board representation
 # -making the bank with resources
 # -a basic turn, with resource distribution
 
@@ -33,6 +32,7 @@ class Gameplay(object):
         self.all_uids = []
         self.player_number = -1
         self.turn_order_first = None
+        self.ui_board = None
 
     def setup_client_connections(self, client_connections):
         """Receive connected clients from the network initializer."""
@@ -160,10 +160,14 @@ class Gameplay(object):
         """Board negotiation phase.  We shuffle the board pieces..."""
         print "Negotiating board..."
         self.decided_board = self.run_public_shuffle(range(19), board.board_shuffle_and_encrypt, board.board_decrypt)
-        print "The decided board is:", self.decided_board
+        time.sleep(3)
         print "Negotiating board roll values..."
         self.decided_board_roll_values = self.run_public_shuffle(range(18), board.board_shuffle_and_encrypt, board.board_decrypt)
-        print "Values are", self.decided_board_roll_values
+                
+        self.ui_board = ui.UIBoard(self.decided_board, self.decided_board_roll_values)
+        self.ui_board.print_vertex_reference()
+        self.ui_board.print_board_edge_reference()
+        
         self.phase += 1
     
     def run_die_roll(self):

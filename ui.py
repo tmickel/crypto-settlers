@@ -21,7 +21,7 @@ def board_piece_to_friendly(num):
     if num >= 16 and num <= 18: return "HLLS"
 
 def board_token_to_friendly(num):
-    """Maps unique numbers 0->17 (18->ROBBER) to value at which dice roll will gain
+    """Maps unique numbers 0->17 to value at which dice roll will gain
        the resource on that token:
        -The desert always has no token
        -1 #2
@@ -45,14 +45,14 @@ def board_token_to_friendly(num):
     if num == 13 or num == 14: return 10
     if num == 15 or num == 16: return 11
     if num == 17: return 12
-    if num == 18: return "RB"
 
 class UIBoard(object):
     def __init__(self, pieces, tokens):
         """Pieces is a shuffled list, 0-18.  Tokens is a shuffled list matched
-           to the pieces, 0-17 (desert has no token)."""
+           to the pieces, 0-17 (desert has no token to start, can have robber)."""
         self.pieces = pieces
         self.tokens = tokens
+        self.robber_pos = self.pieces.index(0)
         
         # for printing ONLY - strings
         self.vertex = ['.'] * 54
@@ -76,6 +76,12 @@ class UIBoard(object):
         self.vertex = vertices
         self.edges = edges
         self.pieces_n = [str(board_token_to_friendly(t)).rjust(2) for t in tokens]
+        if self.robber_pos == self.pieces.index(0):
+            # Robber on the desert, insert it!
+            self.pieces_n.insert(self.robber_pos, "RB") # Insert robber token at proper location for the desert
+        else:
+            # Robber on some other position, replace it
+            self.pieces_n[self.robber_pos] = "RB"
         self.pieces_t = [board_piece_to_friendly(p) for p in pieces]
 
     def print_board(self):
