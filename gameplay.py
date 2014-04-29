@@ -8,23 +8,33 @@ import time
 import board
 import dice
 
+# To do for code for Wednesday:
+# -finish up turn order
+# -players choose two houses and two roads to start
+# -ascii art board, board representation
+# -making the bank with resources
+# -a basic turn, with resource distribution
+
+# -trading and the robber
+
+# to do: winner determination, development cards
+
 class Gameplay(object):
     def __init__(self, uid):
         self.client_connections = []
         self.phase = 0
         self.uid = uid
         self.players_ready = {}
-        self.players_state = {}
         self.die_rolls = {}
         self.die_turn_count = 0
+        self.shuffle_turn_count = 0
+        self.shuffle_rolls = {}
 
     def setup_client_connections(self, client_connections):
         """Receive connected clients from the network initializer."""
         self.client_connections = client_connections
         self.players_ready = {c.their_uid: False for c in 
                               self.client_connections} # For welcoming
-        self.players_state = {c.their_uid: [False, []] for c in self.client_connections} #[board, [key, iv]]
-        self.players_state[self.uid] = [False, []] # for board negotiation
     
     def broadcast_message(self, message):
         """Broadcast a message to all other players.  No response is given."""
@@ -48,12 +58,16 @@ class Gameplay(object):
             # Resend the welcome message to this client, just in case they just
             # became ready...
             self.send_message(message['uid'], {'ready': True})
-        if 'board_suggestion' in message:
+        if 'shuffle_suggestion' in message:
             # Save the player's board suggestion
-            self.players_state[message['uid']][0] = message['board_suggestion']
-        if 'board_keyiv' in message:
+            s_t = int(message['shuffle_turn'])
+            if s_t not in self.shuffle_rolls:
+                self.shuffle_rolls[s_t] = {c.their_uid: [None, None] for c in self.client_connections}
+            self.shuffle_rolls[s_t][message['uid']][0] = message['shuffle_suggestion']
+        if 'shuffle_keyiv' in message:
             # Save the player's board key/iv - AFTER all suggestions
-            self.players_state[message['uid']][1] = message['board_keyiv']
+            s_t = int(message['shuffle_turn'])
+            self.shuffle_rolls[s_t][message['uid']][1] = message['shuffle_keyiv']
         if 'die_commit' in message:
             d_t = int(message['die_turn'])
             # Save the player's die commitment
@@ -85,54 +99,64 @@ class Gameplay(object):
         print "Ready to play!  Starting game in 3 seconds..."
         time.sleep(3)
         self.phase += 1
-    
-    def board_negotiation_run(self):
-        """Board negotiation phase.  We shuffle the board pieces..."""
-        print "Negotiating board..."
+        
+    def run_public_shuffle(self, suggestion, encrypt_fun, decrypt_fun):
+        if self.shuffle_turn_count not in self.shuffle_rolls:
+            self.shuffle_rolls[self.shuffle_turn_count] = {c.their_uid: [False, []] for c in self.client_connections} #[shuffle, [key, iv]]
+            self.shuffle_rolls[self.shuffle_turn_count][self.uid] = [False, []]
         # Consistent negotiation order across clients
         negotiate_order = sorted([c.their_uid for c in self.client_connections] + [self.uid])
         my_key = None
         my_iv = None
         i = 0 # Current client
         for uid in negotiate_order:
-            # Wait for the i-th player with UID to suggest their board.
-            # If we are the i-th player, suggest a board. 
+            # Wait for the i-th player with UID to suggest their shuffle.
+            # If we are the i-th player, suggest a shuffle. 
             if uid == self.uid:
-                # We need to generate and send out the initial board.
-                print "Our turn to shuffle the board..."
+                # We need to generate and send out the initial shuffle.
+                print "Our turn to shuffle..."
                 # Use the previous player's suggestion if it exists, or 1-19.
-                old_board = range(19) if i == 0 else self.players_state[negotiate_order[i-1]][0]
-                board_suggestion, my_key, my_iv = board.board_shuffle_and_encrypt(old_board)
-                self.players_state[self.uid] = [board_suggestion, [my_key, my_iv]]
-                self.broadcast_message({'board_suggestion': board_suggestion})
-            while self.players_state[uid][0] == False:
-                print "Waiting for someone else to shuffle the board..."
+                old_shuffle = suggestion if i == 0 else self.shuffle_rolls[self.shuffle_turn_count][negotiate_order[i-1]][0]
+                shuffle_suggestion, my_key, my_iv = encrypt_fun(old_shuffle)
+                self.shuffle_rolls[self.shuffle_turn_count][self.uid] = [shuffle_suggestion, [my_key, my_iv]]
+                self.broadcast_message({'shuffle_suggestion': shuffle_suggestion, 'shuffle_turn': self.shuffle_turn_count})
+            while self.shuffle_rolls[self.shuffle_turn_count][uid][0] == False:
+                print "Waiting for someone else to shuffle..."
                 time.sleep(2)
             i += 1
-        print "All board shuffles given.  Sharing keys..."
-        # Take the last broadcasted board.  Decrypt it in reverse order using everyone's keys...
-        self.broadcast_message({"board_keyiv": (my_key, my_iv)})
-        self.decided_board = self.players_state[negotiate_order[-1]][0]
+        print "All shuffles given.  Sharing keys..."
+        # Take the last broadcasted shuffle.  Decrypt it in reverse order using everyone's keys...
+        self.broadcast_message({"shuffle_keyiv": (my_key, my_iv), 'shuffle_turn': self.shuffle_turn_count})
+        decided_shuffle = self.shuffle_rolls[self.shuffle_turn_count][negotiate_order[-1]][0]
         
-        while not all([a[1] for a in self.players_state.values()]):
+        while not all([a[1] for a in self.shuffle_rolls[self.shuffle_turn_count].values()]):
             time.sleep(2)
         
-        # We have all the information needed for the agreed-upon shuffled board.
+        # We have all the information needed for the agreed-upon shuffle.
         # Decrypt!
         for i in range(len(negotiate_order)):
             j = len(negotiate_order) - i - 1 # Index of player, last->first
-            # Decrypt the board decided_board using the key, IV given by j
-            key, iv = self.players_state[negotiate_order[j]][1]
-            self.decided_board = board.board_decrypt(self.decided_board, key, iv)
+            # Decrypt the shuffle using the key, IV given by j
+            key, iv = self.shuffle_rolls[self.shuffle_turn_count][negotiate_order[j]][1]
+            decided_shuffle = decrypt_fun(decided_shuffle, key, iv)
         
-        self.decided_board = [int(k) for k in self.decided_board]
+        decided_shuffle = [int(k) for k in decided_shuffle]
         # Basic sanity check - if this fails the first person to suggest the
-        # board was lying, and we all quit the game.
-        assert len(self.decided_board) == 19
-        for card in range(19):
-            assert card in self.decided_board
-        
+        # shuffle was lying, and we all quit the game.
+        assert len(decided_shuffle) == len(suggestion)
+        for card in suggestion:
+            assert card in decided_shuffle
+        self.shuffle_turn_count += 1
+        return decided_shuffle
+    
+    def board_negotiation_run(self):
+        """Board negotiation phase.  We shuffle the board pieces..."""
+        print "Negotiating board..."
+        self.decided_board = self.run_public_shuffle(range(19), board.board_shuffle_and_encrypt, board.board_decrypt)
         print "The decided board is:", self.decided_board
+        print "Negotiating board roll values..."
+        self.decided_board_roll_values = self.run_public_shuffle(range(19), board.board_shuffle_and_encrypt, board.board_decrypt)
+        print "Values are", self.decided_board_roll_values
         self.phase += 1
     
     def run_die_roll(self):
