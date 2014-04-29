@@ -64,8 +64,7 @@ class UIBoard(object):
         self.game_vertex = ['.'] * 54
         self.game_edges = ['-'] * 72
     
-    # Edge-to-edge adjacencies - an edge is adjacent to an edge if it's adjacent
-    # to a vertex which is adjacent to that edge (for road building)
+
     # Vertex-edge adjacencies: used to check if house building is valid
     vertex_edge_adjacencies = [
         'a': ['a', 'b'],
@@ -147,7 +146,6 @@ class UIBoard(object):
         '18': ['S', 'T', 'X', 'Y', '0', '1']
     ]
     
-    
     def print_board_edge_reference(self):
         print "SHOWING EDGE REFERENCE:"
         self.format_board(['.'] * 54, list(string.ascii_lowercase) + list(string.ascii_uppercase) + range(20),
@@ -195,7 +193,67 @@ class UIBoard(object):
     
     def get_edge(self, f):
         """Returns who is on edge f"""
-        return self.game_vertex[self.edge_friendly_to_id(f)]
+        return self.game_edge[self.edge_friendly_to_id(f)]
+    
+    def edge_adjacent_vertices(self, f):
+        """Given vertex f, return list of adjacent vertices"""
+        vertices = []
+        for vertex, edges in self.vertex_edge_adjacencies:
+            if f in edges:
+                vertices.append(vertex)
+        return vertices
+        
+    # Edge-to-edge adjacencies - an edge is adjacent to an edge if it's adjacent
+    # to a vertex which is adjacent to that edge (for road building)
+
+    def edge_adjacent_edges(self, f):
+        e_a_v = self.edge_adjacent_vertices(f)
+        e_a_e = []
+        for v in e_a_v:
+            e_a_e.extend(self.vertex_edge_adjacencies[v])
+        return e_a_e
+    
+    def can_build_road(self, f, player):
+        """Returns whether player can build road on edge f"""
+        edge_index = self.edge_friendly_to_id(f)
+        if self.game_edge[edge_index] != '-':
+            return False # already occupied
+        adjacent_vertices = self.edge_adjacent_vertices(f)
+        # adjacent vertices either have nothing or player
+        has_adjacent_settlement = False
+        for a_v in adjacent_vertices:
+            if a_v != '.':
+                if a_v != player:
+                    return False
+                else:
+                    has_adjacent_settlement = True
+        # must be adjacent to another road
+        adjacent_edges = self.edge_adjacent_edges(f)
+        has_adjacent_road = False
+        for a_e in adjacent_edges:
+            if self.get_edge(a_e) == player:
+                has_adjacent_road = True
+        return has_adjacent_road or has_adjacent_settlement:
+    
+    def can_build_house(self, f, player):
+        """Returns whether player can build house on vertex f"""
+        vertex_index = self.vertex_friendly_to_id(f)
+        if self.game_vertex[vertex_index] != '.':
+            return False # already occupied
+        adjacent_edges = self.vertex_edge_adjacencies[f]
+        for a in adjacent_edges:
+            if self.get_edge(a) == player:
+                # We own this edge.  Anyone on the other end of it?
+                e_a_v = self.edge_adjacent_vertices(a)
+                for v in e_a_v:
+                    if self.get_vertex(f) != '.':
+                        return False # Too close to another settlement
+                # We have an adjacent edge and the attached vertex is empty - can build
+                return True
+        return False
+    
+    def resources_owed(self, n):
+        """What resources are owed on a particular dice roll?"""
     
     
     
