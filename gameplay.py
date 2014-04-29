@@ -89,6 +89,7 @@ class Gameplay(object):
             if self.phase == 0: self.welcome_run()
             elif self.phase == 1: self.board_negotiation_run()
             elif self.phase == 2: self.turn_order_run()
+            elif self.phase == 3: self.initial_placement_run()
             else:
                 time.sleep(10)
                 return
@@ -221,3 +222,28 @@ class Gameplay(object):
         self.turn_order_first = max_roller
         print "Player", ui.uid_to_friendly(max_roller, self.all_uids), "goes first."
         self.phase += 1
+    
+    def initial_placement_run(self):
+        """Allow players to place original two houses and two roads"""
+        # Order:  start with self.turn_order_first, proceed to everyone in UID
+        # order.  Then start with the last person, going back to self.t_o_f...
+        placement_order = [self.turn_order_first] # add the first person
+        for u in sorted(self.all_uids): # add everyone after the first person
+            if u > self.turn_order_first:
+                placement_order.append(u)
+        for u in sorted(self.all_uids): # add everyone before the first person
+            if u < self.turn_order_first:
+                placement_order.append(u)
+        for u in sorted(self.all_uids)[::-1]: # add everyone before the first person, reverse order
+            if u < self.turn_order_first:
+                placement_order.append(u)
+        for u in sorted(self.all_uids)[::-1]: # add everyone after the first person, reverse order
+            if u > self.turn_order_first:
+                placement_order.append(u)
+        placement_order.append(self.turn_order_first)
+        
+        
+        print placement_order
+        
+        self.phase += 1
+        

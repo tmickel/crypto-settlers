@@ -66,7 +66,7 @@ class UIBoard(object):
     
 
     # Vertex-edge adjacencies: used to check if house building is valid
-    vertex_edge_adjacencies = [
+    vertex_edge_adjacencies = {
         'a': ['a', 'b'],
         'b': ['a', 'c'],
         'c': ['d', 'f'],
@@ -121,10 +121,10 @@ class UIBoard(object):
         'Z': ['15', '13'],
         '0': ['16', '18'],
         '1': ['18', '17']
-    ]
+    }
     
     # Hex-vertex adjacencies: used to determine who to award resources to
-    hex_vertex_adjacencies = [
+    hex_vertex_adjacencies = {
         '0': ['a', 'b', 'd', 'e', 'i', 'j'],
         '1': ['c', 'd', 'i', 'h', 'n', 'o'],
         '2': ['e', 'f', 'k', 'p', 'q', 'j'],
@@ -144,7 +144,7 @@ class UIBoard(object):
         '16': ['L', 'R', 'W', 'X', 'S', 'M'],
         '17': ['N', 'O', 'T', 'U', 'Y', 'Z'],
         '18': ['S', 'T', 'X', 'Y', '0', '1']
-    ]
+    }
     
     def print_board_edge_reference(self):
         print "SHOWING EDGE REFERENCE:"
@@ -233,10 +233,11 @@ class UIBoard(object):
         for a_e in adjacent_edges:
             if self.get_edge(a_e) == player:
                 has_adjacent_road = True
-        return has_adjacent_road or has_adjacent_settlement:
+        return has_adjacent_road or has_adjacent_settlement
     
-    def can_build_house(self, f, player):
-        """Returns whether player can build house on vertex f"""
+    def can_build_house(self, f, player, initial_case=False):
+        """Returns whether player can build house on vertex f
+           If initial_case, don't require an adjacent road."""
         vertex_index = self.vertex_friendly_to_id(f)
         if self.game_vertex[vertex_index] != '.':
             return False # already occupied
@@ -250,7 +251,7 @@ class UIBoard(object):
                         return False # Too close to another settlement
                 # We have an adjacent edge and the attached vertex is empty - can build
                 return True
-        return False
+        return initial_case
     
     def resources_owed(self, n):
         """What resources are owed on a particular dice roll?"""
