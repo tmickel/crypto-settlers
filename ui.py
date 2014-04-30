@@ -5,6 +5,9 @@ def uid_to_friendly(uid, all_uids):
     position = sorted(all_uids).index(uid)
     return position + 1
 
+def friendly_to_uid(friendly, all_uids):
+    return sorted(all_uids)[int(friendly)-1]
+
 def board_piece_to_friendly(num):
     """Maps unique numbers 0->18 to different kinds of board piece:
        -1 desert
@@ -45,6 +48,15 @@ def board_token_to_friendly(num):
     if num == 13 or num == 14: return 10
     if num == 15 or num == 16: return 11
     if num == 17: return 12
+    if num == None: return "  "
+
+def board_type_to_resource_type(board_type):
+    if board_type == "FIEL": return "grain"
+    if board_type == "FRST": return "lumber"
+    if board_type == "PSTR": return "wool"
+    if board_type == "MNTS": return "ore"
+    if board_type == "HLLS": return "brick"
+    return ""
 
 class UIBoard(object):
     def __init__(self, pieces, tokens):
@@ -55,6 +67,9 @@ class UIBoard(object):
         self.edges = ['-'] * 72
         self.pieces = pieces
         self.tokens = tokens
+        
+        self.tokens.insert(self.pieces.index(0), None) # token placeholder for the desert
+        
 
         self.pieces_n = [0] + (['12'] * 19) # Dummy - this is overriden by format methods
         self.pieces_t = [0] + (['HLLS'] * 19)
@@ -174,6 +189,10 @@ class UIBoard(object):
         friendly_vertices = list(string.ascii_lowercase) + list(string.ascii_uppercase) + [str(n) for n in range(2)]
         return friendly_vertices.index(f)
     
+    def vertex_id_to_friendly(self, iid):
+        friendly_vertices = list(string.ascii_lowercase) + list(string.ascii_uppercase) + [str(n) for n in range(2)]
+        return friendly_vertices[iid]
+        
     def edge_friendly_to_id(self, f):
         """Convert a user/friendly-represented edge to one we can use easily internally"""
         friendly_edges = list(string.ascii_lowercase) + list(string.ascii_uppercase) + [str(n) for n in range(20)]
@@ -236,7 +255,6 @@ class UIBoard(object):
         for a_e in adjacent_edges:
             if self.get_edge(a_e) == player:
                 has_adjacent_road = True
-        print has_adjacent_road, has_adjacent_settlement
         return has_adjacent_road or has_adjacent_settlement
     
     def can_build_house(self, f, player, initial_case=False):
@@ -257,23 +275,57 @@ class UIBoard(object):
                 return True
         return initial_case
     
+    def vertex_hex_adjacencies(self, vertex_friendly):
+        """Returns hexagons adjacent to vertex_friendly"""
+        hex_adj = []
+        for hexa, vertices in self.hex_vertex_adjacencies.iteritems():
+            if vertex_friendly in vertices:
+                hex_adj.append(int(hexa))
+        return hex_adj
+    
     def resources_owed(self, n):
-        """What resources are owed on a particular dice roll?"""
-        pass
-    
-    
-    
+        """Take a dice roll n 1-12 (not 7) and return all the users who have
+           houses on all vertices surrounding the hexagons with that token value.
+           Return format: dict(user: ['brick', 'wool', 'brick'], etc.)"""
+        if n == 7:
+            return {}
+        resources_dist = {}
+        i = -1
+        for v in self.game_vertex:
+            i += 1
+            if v == '.':
+                continue
+            v_friendly = self.vertex_id_to_friendly(i)
+            adjacent_hexagons = self.vertex_hex_adjacencies(v_friendly)
+            # Check the adjacent hexagons - do they have a token that matches n?
+            # adjacent_hexagons is a list of hexagon indices.
+            # The token for the corresponding hexagon is
+            robbed = False
+            awarded = []
+            for ahex in adjacent_hexagons:
+                if self.robber_pos == ahex:
+                    robbed = True # Rob this!
+                corresponding_token = self.tokens[int(ahex)]
+                if board_token_to_friendly(corresponding_token) == n:
+                    # Award the piece
+                    awarded.append(board_type_to_resource_type(board_piece_to_friendly(self.pieces[ahex])))
+            if robbed: # The whole vertex is robbed
+                continue
+            # Award the piece
+            if awarded:
+                if v not in resources_dist: resources_dist[v] = []
+                resources_dist[v].extend(awarded)
+        return resources_dist
+
+    def move_robber(self, pos):
+        self.robber_pos = pos
+        
     # Format/print methods
     def format_board(self, vertices, edges, pieces, tokens):
         self.vertex = vertices
         self.edges = edges
         self.pieces_n = [str(board_token_to_friendly(t)).rjust(2) for t in tokens]
-        if self.robber_pos == self.pieces.index(0):
-            # Robber on the desert, insert it!
-            self.pieces_n.insert(self.robber_pos, "RB") # Insert robber token at proper location for the desert
-        else:
-            # Robber on some other position, replace it
-            self.pieces_n[self.robber_pos] = "RB"
+        self.pieces_n[self.robber_pos] = "RB"
         self.pieces_t = [board_piece_to_friendly(p) for p in pieces]
 
     def print_board(self):

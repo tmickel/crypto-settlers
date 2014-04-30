@@ -8,16 +8,13 @@ import time
 import board
 import dice
 import ui
+import resources
 
-# To do for code for Wednesday:
-# -finish up turn order
-# -players choose two houses and two roads to start
-# -making the bank with resources
-# -a basic turn, with resource distribution
-
-# -trading and the robber
-
-# to do: winner determination, development cards
+# To do:
+# -robber actually steals from another player's hand (it just moves around)
+# -build, trade during turn (reveal resources in hand)
+# -winner determination
+# -development cards
 
 class Gameplay(object):
     def __init__(self, uid):
@@ -32,9 +29,14 @@ class Gameplay(object):
         self.all_uids = []
         self.player_number = -1
         self.turn_order_first = None
+        self.turn_order = []
         self.ui_board = None
         self.initialization_round = 0
         self.init_rounds = {}
+        self.game_turn = 0
+        self.game_rounds = {}
+        self.resources = resources.ResourceBank()
+        self.hand = []
 
     def setup_client_connections(self, client_connections):
         """Receive connected clients from the network initializer."""
@@ -85,7 +87,13 @@ class Gameplay(object):
             d_t = int(message['die_turn'])
             self.die_rolls[d_t][message['uid']][1] = message['die_roll']
         if 'initialization_round' in message:
-            self.init_rounds[message['initialization_round']] = (message['uid'], message['house_place'], message['road_place'])       
+            self.init_rounds[message['initialization_round']] = (message['uid'], message['house_place'], message['road_place'])
+        if 'turn_done' in message:
+            if message['turn_done'] not in self.game_rounds: self.game_rounds[message['turn_done']] = {}
+            self.game_rounds[message['turn_done']]['done'] = True, message['uid']
+        if 'robber' in message:
+            if message['turn'] not in self.game_rounds: self.game_rounds[message['turn']] = {}
+            self.game_rounds[message['turn']]['robber'] = message['robber'], message['uid']
     
     def run(self):
         """Run the game.  This function should not return until we are finished."""
@@ -94,6 +102,7 @@ class Gameplay(object):
             elif self.phase == 1: self.board_negotiation_run()
             elif self.phase == 2: self.turn_order_run()
             elif self.phase == 3: self.initial_placement_run()
+            elif self.phase == 4: self.game_play_run()
             else:
                 time.sleep(10)
                 return
@@ -300,4 +309,91 @@ class Gameplay(object):
             print "The new board:"
             self.ui_board.print_actual_board()
         self.phase += 1
+    
+    def game_play_run(self):
+        """Everything's set up - actually play the game.  It took so long to get here!"""
+        print "Playing the game! :)"
+        self.turn_order = [self.turn_order_first] # add the first person
+        for u in sorted(self.all_uids): # add everyone after the first person
+            if u > self.turn_order_first:
+                self.turn_order.append(u)
+        for u in sorted(self.all_uids): # add everyone before the first person
+            if u < self.turn_order_first:
+                self.turn_order.append(u)
+        time.sleep(2)
+        while True:
+            # Whose turn is it?  Start at the first player and go around forever
+            current_player = self.turn_order[self.game_turn % len(self.turn_order)]
+            print "It's player %s's turn!" % str(ui.uid_to_friendly(current_player, self.all_uids))
+            if current_player == self.uid: print "(That's you!)"
+            # Roll the dice for that player
+            print "Fairly rolling the dice..."
+            dice_roll = self.run_die_roll() + self.run_die_roll()
+            print "The dice rolled to %s" % str(dice_roll)
+            
+            if dice_roll != 7:
+                # Distribute resources based on the dice roll
+                owed = self.ui_board.resources_owed(dice_roll)
+                print "The bank distributes:", owed
+                # Mark those items as locally claimed.  That user can 
+                for player, resources in owed.iteritems():
+                    for resource in resources:
+                        the_resource = self.resources.get_next_resource(resource)
+                        self.resources.set_resource_owner(the_resource, player)
+                        if player == ui.uid_to_friendly(self.uid, self.all_uids):
+                            # add to my hand
+                            self.hand.append(the_resource)
+            elif current_player == self.uid:
+                inp = raw_input("You control the robber!  Where would you like to move it? (Hexagon index, ! for key)")
+                while inp == "!":
+                    self.ui_board.print_hex_reference()
+                    inp = raw_input("You control the robber!  Where would you like to move it? (Hexagon index, ! for key)")
+                inp = int(inp)
+                # move robber to inp
+                self.broadcast_message({"turn": self.game_turn, "robber": inp})
+                # steal from someone?
+                #steal = raw_input("From whom would you like to steal (among those you put the robber next to)?")
+                #self.broadcast_message({"steal": ui.friendly_to_uid(steal, self.all_uids), "steal_turn": self.game_turn})
+                # Wait for them to send their encrypted hand
+                # Ask them for one of their keys
+                # Add this item to our hand
+                print "Stealing during robbery is unimplemented."
+            # Is it our turn?
+            if current_player == self.uid:
+                print "It's your turn!  What would you like to do?"
+                do = raw_input("1: try to make a trade, 2: buy a house, 3: buy a road, or nothing")
+                if do != "":
+                    if int(do) == 1:
+                        # Ask a user for trade
+                        # Broadcast ask
+                        print "Trading is unimplemented"
+                        pass
+                    elif int(do) == 2:
+                        # Choose the house
+                        house = self.house_place()
+                        # Spend resources
+                        print "New house placement is unimplemented"
+                        # Broadcast
+                        pass
+                    elif int(do) == 3:
+                        # Choose the road
+                        road = self.road_place()
+                        # Spend resources
+                        # Broadcast
+                        print "New road placement is unimplemented"
+                        pass
+                self.broadcast_message({'turn_done': self.game_turn}) # end my turn
+            else:
+                print "Waiting for the player to complete their turn (purchases, trades, etc.)"
+                while not self.game_turn in self.game_rounds or 'done' not in self.game_rounds[self.game_turn]:
+                    time.sleep(1)
+                # only the current player can end their turn
+                assert self.game_rounds[self.game_turn]['done'][1] == current_player
+                # do we move the robber?
+                if 'robber' in self.game_rounds[self.game_turn]:
+                    assert self.game_rounds[self.game_turn]['robber'][1] == current_player # verify the sender
+                    self.ui_board.move_robber(self.game_rounds[self.game_turn]['robber'][0]) # move it
+            self.ui_board.print_actual_board()
+            self.game_turn += 1
+            
         
